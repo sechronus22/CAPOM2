@@ -3,6 +3,7 @@ from datetime import datetime
 # import gurobipy as gp
 import sqlite3
 import logging
+import json
 
 halt = False
 InputPath = "Input"
@@ -17,6 +18,7 @@ running = False
 # to do
 cf = open('config.conf')
 conf = cf.read()
+cf_dict = json.loads(conf)
 
 # try catch over while loop >> if error >> save status to db
 # to do
@@ -30,8 +32,12 @@ conf = cf.read()
 while not halt:
     # connect to database
     # try-catch open db >> if not success >> save log
-    queue = sqlite3.connect('queue_server.db')
-    cursor = queue.cursor()
+    try:
+        queue = sqlite3.connect('queue_server.db')
+        cursor = queue.cursor()
+    except sqlite3.Error as er:
+        print('SQLite error: %s' % (' '.join(er.args)))
+        # add error to 
     print("Connected successfully")
 
 
