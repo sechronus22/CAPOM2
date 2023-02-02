@@ -20,6 +20,8 @@ cf = open('config.conf')
 conf = cf.read()
 cf_dict = json.loads(conf)
 
+# add comment
+
 # try catch over while loop >> if error >> save status to db
 # to do
 
