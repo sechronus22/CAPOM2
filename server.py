@@ -4,23 +4,23 @@ from datetime import datetime
 import sqlite3
 import logging
 import json
+import pandas as pd
 
 halt = False
 InputPath = "Input"
 running = False
 
-# input_list = os.listdir(InputPath)
-# input_file = input_list[0]
-# file_path = "gurobi_cl ResultFile=Output/"+input_file[:-3]+".sol Input/"+input_file
-# os.system(file_path)
-
 # read config file
 # to do
-cf = open('config.conf')
-conf = cf.read()
-cf_dict = json.loads(conf)
+with open('config.conf') as config_file:
+    conf = json.load(config_file)
 
-# add comment
+queue_db_name = conf['DATABASE_NAME']
+queue_table_name = conf['QUEUE_TABLE_NAME']
+queue_status_table = 'QUEUE_STATUS'
+table_field_list= conf['FIELD_MAP'][0]
+input_dir = conf['INPUT_PATH']
+output_dir = conf['OUTPUT_PATH']
 
 # try catch over while loop >> if error >> save status to db
 # to do
@@ -32,75 +32,182 @@ cf_dict = json.loads(conf)
 # to do
 
 while not halt:
+
+    # Check time    
+    now = datetime.now()
+    cur_hour = now.hour
+    cur_minute = now.minute
+
+    # Kill process at 7.00 a.m.
+    # to do 
+
+    # solve models at 7.00 a.m.
+    if cur_hour == 7 and cur_minute == 0 :
+        try :
+            queue_db = sqlite3.connect(queue_db_name)
+        except Exception as e:
+            print(e)
+
+        # print("Database connected successfully")
+
+        # get table
+        # get processing queue which CCPS_VALID == 'TRUE'
+
+        else :
+            cursor = queue_db.cursor()
+            queue_table = cursor.execute("SELECT * from "+ queue_table_name + " WHERE STATUS =='processing' and CCPS_VALID == 'TRUE' ")
+            queue_table = queue_table.fetchall()
+
+            queue_db.commit()
+            queue_db.close()
+
+            #solve each model
+            
+            for row in queue_table:
+
+                # read input and save as .py
+                input_path = input_dir+str(row[0])+'.py'
+                f = open(input_path,'w')
+                f.write(row[4])
+                f.close()
+                print('Read completely')
+
+                # solve problem
+                run_cmd = 'python3 '+input_path + " >> "+output_dir + str(row[0])+ ".out"
+                try:
+                    os.system(run_cmd)
+                except Exception as e:
+                    # save log if error
+                    queue_db = sqlite3.connect(queue_db_name)
+                    cursor = queue_db.cursor()
+                    cursor.execute("UPDATE "+queue_table_name+ " SET STATUS = ? and LOG = ? WHERE PROJECT_ID == ? ",('failed',e,row[0]))
+                    queue_db.commit() 
+                    queue_db.close()
+                else :
+                    print('Solve completely')
+
+                    # update solution and status
+                    output_path = output_dir + str(row[0])+'.out'
+                    o = open(output_path)
+                    output = o.read()
+                    o.close()
+
+                    queue_db = sqlite3.connect(queue_db_name)
+                    cursor = queue_db.cursor()
+                    cursor.execute("UPDATE " + queue_table_name + " SET STATUS = ?,OUTPUT = ? WHERE PROJECT_ID == ? ",('complete',output,row[0]))
+                    queue_db.commit()
+                    queue_db.close()
+                    print('Update completely')
+
+                    # delete input and output file
+                    os.remove(input_path)
+                    os.remove(output_path)
+
     # connect to database
     # try-catch open db >> if not success >> save log
-    try:
-        queue = sqlite3.connect('queue_server.db')
-        cursor = queue.cursor()
-    except sqlite3.Error as er:
-        print('SQLite error: %s' % (' '.join(er.args)))
-        # add error to 
-    print("Connected successfully")
+    try :
+        queue_db = sqlite3.connect(queue_db_name)
+    except:
+        print('Queue server database opening error')
 
+    # print("Database connected successfully")
 
     # get table
     # get processing queue and pick first row
-    queue_table = cursor.execute("SELECT FIRST(*) from QUEUE WHERE STATUS='processing'")
-
+    cursor = queue_db.cursor()
+    queue_table = cursor.execute("SELECT * from "+ queue_table_name + " WHERE STATUS =='processing' and CCPS_VALID == 'FALSE' ")
     queue_table = queue_table.fetchall()
 
-    queue.commit()
-    queue.close()
-    # Check time    
-    now = datetime.now()
-    input_hour = now.hour
-    # Kill process at 7.00 a.m.
-    # to do
+    queue_db.commit()
+    queue_db.close()
 
     if len(queue_table)>0:
 
         for row in queue_table:
-            if row[2]=='processing':
-                if row[1] == 'plant':
-                    # update running status
-                    # read input and save as .py
-                    input_name = 'Input/'+str(row[0])+'.py'
-                    f = open(input_name,'w')
-                    f.write(row[3])
-                    f.close()
-                    print('read completely')
-                    # solve problem
-                    run_cmd = 'python3 '+input_name + " >> a.out"
+            # check whether model is from CCPS or not
+            if row[1] == 'CCPS':
+                # read input and save as .py
+                input_path = input_dir+str(row[0])+'.py'
+                f = open(input_path,'w')
+                f.write(row[4])
+                f.close()
+                print('Read completely')
+
+                # solve problem
+                run_cmd = 'python3 '+input_path + " >> "+output_dir + str(row[0])+ ".out"
+                try:
                     os.system(run_cmd)
-                    print('solve completely')
-                    # update solution
-                    output_path = 'Output/'+str(row[0])+'.sol'
+                except Exception as e:
+                    # save log if error
+                    queue_db = sqlite3.connect(queue_db_name)
+                    cursor = queue_db.cursor()
+                    cursor.execute("UPDATE "+queue_table_name+ " SET STATUS = ? and LOG = ? WHERE PROJECT_ID == ? ",('failed',e,row[0]))
+                    queue_db.commit() 
+                    queue_db.close()
+                else :
+                    print('Solve completely')
+
+                    # update solution and status
+                    output_path = output_dir + str(row[0])+'.out'
                     o = open(output_path)
                     output = o.read()
                     o.close()
-                    cursor.execute("UPDATE QUEUE SET STATUS = ?,OUTPUT = ? WHERE ID= ? ",('complete',output,row[0]))
-                    queue.commit()
-                    print('update completely')
-                else :
-                    if (input_hour <= 7) or (input_hour >= 17):
-                        # read input and save as .py
-                        input_name = 'Input/'+str(row[0])+'.py'
-                        f = open(input_name,'w')
-                        f.write(row[3])
-                        f.close()
-                        print('read completely')
-                        # solve problem
-                        run_cmd = 'python3 '+input_name
+
+                    queue_db = sqlite3.connect(queue_db_name)
+                    cursor = queue_db.cursor()
+                    cursor.execute("UPDATE " + queue_table_name + " SET STATUS = ?,OUTPUT = ? WHERE PROJECT_ID == ? ",('complete',output,row[0]))
+                    queue_db.commit()
+                    queue_db.close()
+                    print('Update completely')
+
+                    # delete input and output file
+                    os.remove(input_path)
+                    os.remove(output_path)
+
+                break
+
+            else :
+                # non factory model cannot be solved between 7.00 a.m. and 5.00 p.m.
+                if (cur_hour <= 7) or (cur_hour >= 17):
+                    # read input and save as .py
+
+                    input_path = input_dir+str(row[0])+'.py'
+                    f = open(input_path,'w')
+                    f.write(row[4])
+                    f.close()
+                    print('Read completely')
+
+                    # solve problem
+                    run_cmd = 'python3 '+input_path + " >> "+output_dir + str(row[0])+ ".out"
+                    try:
                         os.system(run_cmd)
-                        print('solve completely')
-                        # update solution
-                        output_path = 'Output/'+str(row[0])+'.sol'
+                    except Exception as e:
+                        # save log if error
+                        queue_db = sqlite3.connect(queue_db_name)
+                        cursor = queue_db.cursor()
+                        cursor.execute("UPDATE "+queue_table_name+ " SET STATUS = ? and LOG = ? WHERE PROJECT_ID == ? ",('failed',e,row[0]))
+                        queue_db.commit() 
+                        queue_db.close()
+                    else :
+                        print('Solve completely')
+
+                        # update solution and status
+                        output_path = output_dir + str(row[0])+'.out'
                         o = open(output_path)
                         output = o.read()
                         o.close()
-                        cursor.execute("UPDATE QUEUE SET STATUS = ?,OUTPUT = ? WHERE ID= ? ",('complete',output,row[0]))
-                        queue.commit()
-                        print('update completely')
-            # break
+
+                        queue_db = sqlite3.connect(queue_db_name)
+                        cursor = queue_db.cursor()
+                        cursor.execute("UPDATE " + queue_table_name + " SET STATUS = ?,OUTPUT = ? WHERE PROJECT_ID == ? ",('complete',output,row[0]))
+                        queue_db.commit()
+                        queue_db.close()
+                        print('Update completely')
+
+                        # delete input and output file
+                        os.remove(input_path)
+                        os.remove(output_path)
+
+                break
     
 
