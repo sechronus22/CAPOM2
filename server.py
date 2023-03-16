@@ -1,4 +1,4 @@
-import os
+import os, signal
 from datetime import datetime
 # import gurobipy as gp
 import sqlite3
@@ -7,7 +7,6 @@ import json
 import pandas as pd
 
 halt = False
-InputPath = "Input"
 running = False
 
 # read config file
@@ -22,15 +21,6 @@ table_field_list= conf['FIELD_MAP'][0]
 input_dir = conf['INPUT_PATH']
 output_dir = conf['OUTPUT_PATH']
 
-# try catch over while loop >> if error >> save status to db
-# to do
-
-# module signal >> try catch >> assign time limit when connect to db, update db
-# to do 
-
-# supervisor ctl
-# to do
-
 while not halt:
 
     # Check time    
@@ -40,6 +30,12 @@ while not halt:
 
     # Kill process at 7.00 a.m.
     # to do 
+    if cur_hour == 7 and cur_minute == 0 :
+        pid = os.fork()
+        # check pid of gurobi solver
+        if pid :
+            os.kill(pid, signal.SIGSTOP)
+
 
     # solve models at 7.00 a.m.
     if cur_hour == 7 and cur_minute == 0 :
@@ -114,7 +110,7 @@ while not halt:
         # get table
         # get processing queue and pick first row
         cursor = queue_db.cursor()
-        queue_table = cursor.execute("SELECT * from "+ queue_table_name + " WHERE SENDER == 'CCPS' and STATUS =='processing' and CCPS_VALID == 'FALSE' ")
+        queue_table = cursor.execute("SELECT * from "+ queue_table_name + " WHERE SENDER == 'CCPS' and STATUS =='processing' and CCPS_VALID == 'FALSE' LIMIT 1")
         queue_table = queue_table.fetchall()
 
         queue_db.commit()
@@ -170,7 +166,7 @@ while not halt:
         # get table
         # get processing queue and pick first row
         cursor = queue_db.cursor()
-        queue_table = cursor.execute("SELECT * from "+ queue_table_name + " WHERE STATUS =='processing' and CCPS_VALID == 'FALSE' ")
+        queue_table = cursor.execute("SELECT * from "+ queue_table_name + " WHERE STATUS =='processing' and CCPS_VALID == 'FALSE' LIMIT 1")
         queue_table = queue_table.fetchall()
 
         queue_db.commit()

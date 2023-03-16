@@ -1,0 +1,6 @@
+model condition
+- read file is unacceptable
+
+os.subprocess()
+lock process : add field for checking
+https://stackoverflow.com/questions/20218570/how-to-determine-pid-of-process-started-via-os-system

@@ -16,3 +16,5 @@ conn.commit()
 conn.close()
 
 # field project_id
+
+# add solver option VARCHAR 
